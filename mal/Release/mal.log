@@ -1,6 +1,0 @@
-﻿cl : Command line warning D9025: overriding '/sdl-' with '/GS-'
-  Source.cpp
-c:\users\me\desktop\mal\mal\mal\source.cpp(5): warning C4005: 'PSAPI_VERSION': macro redefinition
-  c:\program files (x86)\windows kits\10\include\10.0.17763.0\um\psapi.h(56): note: see previous definition of 'PSAPI_VERSION'
-  LINK : /LTCG specified but no code generation required; remove /LTCG from the link command line to improve linker performance
-  mal.vcxproj -> C:\Users\me\Desktop\mal\mal\Release\mal.exe
