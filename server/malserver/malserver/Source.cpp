@@ -12,6 +12,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <sstream>
 #define _CRT_SECURE_NO_WARNINGS
 
 #define DEFAULT_BUFLEN 1024
@@ -19,6 +20,7 @@
 
 typedef std::vector<int> vi;
 
+char *commands[6] = {"GiveMeProcesses", "DownloadMyFile", "UploadThisFile", "GiveMeInfo", "Yeet", "exit"};
 bool visited[DEFAULT_BUFLEN];
 int maxDepth = 0;
 char *NotKey = "MuchReversingButThisIsNotTheKeyHeheMuchReversingButThisIsNotTheKeyHehe";
@@ -240,13 +242,69 @@ int main(int argc, char **argv) {
 		memset(inp, 0, sizeof(inp));
 
 		scanf("%s", inp);
-		WeSendData(std::string(inp), ourSock);
-		char *data;
-		WeRecvData(data, ourSock);
-		puts(data);
-		free(data);
-	}
+		std::stringstream inpStringStream(inp);
+		std::string token;
+		inpStringStream >> token;
 
+		WeSendData(std::string(inp), ourSock);
+		char *data = NULL;
+		if (!token.compare(commands[0])) {
+			WeRecvData(data, ourSock);
+			puts(data);
+		} else if (!token.compare(commands[1])) {
+			printf("Local File Name: ");
+			scanf("%s", inp);
+			FILE *fp = fopen(inp, "rb");
+			fseek(fp, 0, SEEK_END);
+			unsigned long filesize = ftell(fp);
+			fseek(fp, 0, SEEK_SET);
+			char *data = (char *)malloc(filesize);
+			fread(data, 1, filesize, fp);
+			fclose(fp);
+
+			printf("Remote File Name: ");
+			scanf("%s", inp);
+			WeSendData(std::string(inp), ourSock);
+
+			std::stringstream ss;
+			ss << filesize;
+			WeSendData(ss.str(), ourSock);
+			
+			WeSendData(std::string(data, filesize), ourSock);
+		} else if (!token.compare(commands[2])) {
+			printf("Local File Name: ");
+			scanf("%s", inp);
+			FILE *fp = fopen(inp, "wb");
+			if (fp == NULL) {
+				printf("fopen error\n");
+			}
+
+			printf("Remote File Name: ");
+			scanf("%s", inp);
+			WeSendData(std::string(inp), ourSock);
+
+			char *filesize;
+			WeRecvData(filesize, ourSock);
+			unsigned long fsize = atoi(filesize);
+			printf("File size: %lu\n", fsize);
+
+			WeRecvData(data, ourSock);
+			fwrite((void *)data, 1, fsize, fp);
+			fclose(fp);
+		} else if (!token.compare(commands[3])) {
+			WeRecvData(data, ourSock);
+			puts(data);
+		} else if (!token.compare(commands[5])) {
+			exit(0);
+		} else {
+			WeRecvData(data, ourSock);
+			puts(data);
+		}
+
+		if (data) {
+			free(data);
+		}
+	}
 	
 	WeShutdownSocket();
 	return 0;

